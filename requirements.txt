@@ -1,0 +1,7 @@
+# MNIST Handwritten Digit Classifier — Requirements
+# Install with: pip install -r requirements.txt
+
+flask>=3.0.0
+tensorflow>=2.13.0      # or tensorflow-cpu for CPU-only machines
+numpy>=1.24.0
+Pillow>=10.0.0

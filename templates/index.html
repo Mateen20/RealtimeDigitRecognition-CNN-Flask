@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MNIST · Digit Classifier</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=DM+Serif+Display:ital@0;1&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --ink:    #0f0e0d;
+  --ink-2:  #3a3835;
+  --ink-3:  #8a8680;
+  --rule:   #e2ddd8;
+  --paper:  #faf8f5;
+  --cream:  #f3efe9;
+  --blue:   #1c4ed8;
+  --red:    #dc2626;
+  --green:  #15803d;
+  --orange: #c2410c;
+  --mono:   'DM Mono', monospace;
+  --serif:  'DM Serif Display', serif;
+}
+
+html, body {
+  min-height: 100%;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--mono);
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 40px 20px;
+}
+
+.card {
+  width: 100%;
+  max-width: 920px;
+  background: white;
+  border: 1px solid var(--rule);
+  box-shadow: 0 2px 4px rgba(0,0,0,.04), 0 12px 40px rgba(0,0,0,.06);
+}
+
+.card-header {
+  padding: 28px 36px 24px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+.eyebrow { font-size:10px; letter-spacing:.22em; color:var(--ink-3); text-transform:uppercase; margin-bottom:5px; }
+.title   { font-family:var(--serif); font-size:26px; line-height:1; font-style:italic; }
+.model-badge { font-size:10px; letter-spacing:.1em; color:var(--ink-3); border:1px solid var(--rule); padding:5px 12px; background:var(--cream); white-space:nowrap; }
+
+.card-body {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 500px;
+}
+
+/* ── Left draw panel ── */
+.draw-panel {
+  border-right: 1px solid var(--rule);
+  padding: 28px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+.section-label { font-size:10px; letter-spacing:.18em; color:var(--ink-3); text-transform:uppercase; }
+
+#canvas {
+  display: block;
+  width: 264px; height: 264px;
+  background: #111;
+  border: 1px solid #2a2a2a;
+  cursor: crosshair;
+  touch-action: none;
+  box-shadow: inset 0 2px 10px rgba(0,0,0,.6);
+}
+
+.canvas-wrap { position:relative; }
+.canvas-wrap::after {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background-image: linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);
+  background-size: 9.4px 9.4px;
+}
+
+.brush-row { display:flex; align-items:center; gap:10px; }
+.brush-label { font-size:10px; color:var(--ink-3); letter-spacing:.1em; }
+.brush-sizes { display:flex; gap:5px; }
+.brush-btn { width:30px; height:30px; border:1px solid var(--rule); background:white; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:border-color .12s,background .12s; }
+.brush-btn:hover { border-color:var(--ink-2); }
+.brush-btn.active { border-color:var(--ink); background:var(--ink); }
+.brush-btn.active .dot { background:white; }
+.dot { border-radius:50%; background:var(--ink); }
+
+.action-row { display:flex; gap:8px; }
+.btn { font-family:var(--mono); font-size:11px; letter-spacing:.1em; padding:9px 18px; cursor:pointer; border:1px solid var(--ink); transition:background .12s,color .12s; text-transform:uppercase; }
+.btn-primary { background:var(--ink); color:white; }
+.btn-primary:hover { background:var(--ink-2); border-color:var(--ink-2); }
+.btn-ghost { background:white; color:var(--ink); }
+.btn-ghost:hover { background:var(--cream); }
+
+.preview-wrap { display:flex; align-items:center; gap:10px; }
+.preview-label { font-size:10px; color:var(--ink-3); letter-spacing:.08em; }
+#preview-img { width:56px; height:56px; image-rendering:pixelated; border:1px solid var(--rule); background:#111; }
+
+.tips { border:1px solid var(--rule); background:var(--cream); padding:10px 12px; }
+.tips-title { font-size:9px; letter-spacing:.18em; color:var(--ink-3); text-transform:uppercase; margin-bottom:6px; }
+.tip { font-size:10px; color:var(--ink-2); display:flex; gap:6px; margin-bottom:2px; }
+.tip::before { content:'·'; color:var(--ink-3); flex-shrink:0; }
+
+/* ── Right result panel ── */
+.result-panel { padding:28px 32px; display:flex; flex-direction:column; gap:20px; }
+
+.digit-display { display:flex; align-items:baseline; gap:16px; }
+.digit-big { font-family:var(--serif); font-size:88px; line-height:1; min-width:72px; text-align:center; font-style:italic; transition:all .3s cubic-bezier(.34,1.56,.64,1); }
+.digit-big.idle { color:var(--rule); }
+.digit-meta { display:flex; flex-direction:column; gap:3px; }
+.conf-value { font-size:26px; font-family:var(--serif); line-height:1; transition:color .3s; }
+.conf-label { font-size:10px; color:var(--ink-3); letter-spacing:.14em; }
+
+.conf-bar-bg { height:3px; background:var(--rule); overflow:hidden; }
+.conf-bar-fill { height:100%; background:var(--ink); width:0%; transition:width .5s cubic-bezier(.4,0,.2,1); }
+
+.top3-row { display:flex; gap:8px; margin-top:8px; }
+.alt-card { flex:1; border:1px solid var(--rule); padding:8px 10px; display:flex; flex-direction:column; gap:3px; background:var(--cream); }
+.alt-card.winner { border-color:var(--ink); background:white; }
+.alt-digit { font-family:var(--serif); font-size:28px; line-height:1; font-style:italic; color:var(--ink-3); }
+.alt-card.winner .alt-digit { color:var(--ink); }
+.alt-conf { font-size:9px; color:var(--ink-3); }
+.alt-card.winner .alt-conf { color:var(--ink-2); font-weight:500; }
+
+.div { height:1px; background:var(--rule); }
+
+.prob-grid { display:flex; flex-direction:column; gap:4px; margin-top:8px; }
+.prob-row { display:grid; grid-template-columns:14px 1fr 38px; align-items:center; gap:9px; }
+.prob-num { font-size:10px; color:var(--ink-3); font-weight:500; text-align:right; }
+.prob-bar-bg { height:5px; background:var(--rule); overflow:hidden; }
+.prob-bar-fill { height:100%; background:var(--rule); width:0%; transition:width .5s cubic-bezier(.4,0,.2,1),background .3s; }
+.prob-bar-fill.winner { background:var(--ink); }
+.prob-pct { font-size:9px; color:var(--ink-3); text-align:right; transition:color .3s; }
+.prob-pct.winner { color:var(--ink); font-weight:500; }
+
+.status-line { display:flex; align-items:center; gap:7px; font-size:10px; color:var(--ink-3); letter-spacing:.07em; min-height:18px; }
+.status-dot { width:5px; height:5px; border-radius:50%; background:var(--ink-3); flex-shrink:0; }
+.status-dot.ok   { background:var(--green); }
+.status-dot.err  { background:var(--red); }
+.status-dot.busy { background:var(--blue); animation:blink .7s step-end infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+.card-footer { padding:14px 36px; border-top:1px solid var(--rule); display:flex; align-items:center; justify-content:space-between; background:var(--cream); }
+.footer-note { font-size:10px; color:var(--ink-3); letter-spacing:.06em; }
+.footer-keys { font-size:10px; color:var(--ink-3); }
+.kbd { display:inline-block; border:1px solid var(--rule); padding:1px 5px; font-size:9px; background:white; margin:0 2px; }
+
+@media (max-width:700px) {
+  .card-body { grid-template-columns:1fr; }
+  .draw-panel { border-right:none; border-bottom:1px solid var(--rule); }
+  #canvas { width:100%; height:auto; aspect-ratio:1; }
+}
+</style>
+</head>
+<body>
+<div class="page">
+<div class="card">
+
+  <div class="card-header">
+    <div>
+      <div class="eyebrow">Deep Learning · CNN</div>
+      <div class="title">Digit Classifier</div>
+    </div>
+    <div class="model-badge">MNIST · 28 × 28 · 10 classes</div>
+  </div>
+
+  <div class="card-body">
+
+    <!-- Left -->
+    <div class="draw-panel">
+      <div class="section-label">Draw a digit</div>
+
+      <div class="canvas-wrap">
+        <canvas id="canvas" width="264" height="264"></canvas>
+      </div>
+
+      <div class="brush-row">
+        <span class="brush-label">SIZE</span>
+        <div class="brush-sizes">
+          <button class="brush-btn" onclick="setBrush(10,this)"><div class="dot" style="width:4px;height:4px"></div></button>
+          <button class="brush-btn active" onclick="setBrush(18,this)"><div class="dot" style="width:8px;height:8px"></div></button>
+          <button class="brush-btn" onclick="setBrush(26,this)"><div class="dot" style="width:13px;height:13px"></div></button>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn btn-primary" onclick="predict()">Classify</button>
+        <button class="btn btn-ghost"   onclick="clearCanvas()">Clear</button>
+      </div>
+
+      <div class="preview-wrap">
+        <span class="preview-label">MODEL INPUT</span>
+        <img id="preview-img" alt="28x28"/>
+        <span style="font-size:10px;color:var(--ink-3)">28×28</span>
+      </div>
+
+      <div class="tips">
+        <div class="tips-title">Drawing Tips</div>
+        <div class="tip">Draw large — fill most of the canvas</div>
+        <div class="tip">Keep strokes thick and bold</div>
+        <div class="tip">Centre the digit in the box</div>
+        <div class="tip">Use the middle brush size</div>
+      </div>
+    </div>
+
+    <!-- Right -->
+    <div class="result-panel">
+      <div class="section-label">Prediction</div>
+
+      <div class="digit-display">
+        <div class="digit-big idle" id="digit-big">?</div>
+        <div class="digit-meta">
+          <div class="conf-value" id="conf-value">—</div>
+          <div class="conf-label">CONFIDENCE</div>
+        </div>
+      </div>
+
+      <div class="conf-bar-bg"><div class="conf-bar-fill" id="conf-bar"></div></div>
+
+      <div>
+        <div class="section-label">Top 3 guesses</div>
+        <div class="top3-row">
+          <div class="alt-card" id="alt-0"><div class="alt-digit">—</div><div class="alt-conf"></div></div>
+          <div class="alt-card" id="alt-1"><div class="alt-digit">—</div><div class="alt-conf"></div></div>
+          <div class="alt-card" id="alt-2"><div class="alt-digit">—</div><div class="alt-conf"></div></div>
+        </div>
+      </div>
+
+      <div class="div"></div>
+
+      <div>
+        <div class="section-label">All probabilities</div>
+        <div class="prob-grid" id="prob-grid"></div>
+      </div>
+
+      <div class="status-line">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">Draw a digit and press Classify</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="card-footer">
+    <span class="footer-note">Conv2D×5 · Dense 256 · Softmax · ~99.3% test accuracy</span>
+    <span class="footer-keys"><span class="kbd">Enter</span> classify &nbsp;<span class="kbd">Esc</span> clear</span>
+  </div>
+
+</div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+let drawing = false, brushSize = 18, lastX = null, lastY = null;
+
+ctx.fillStyle = '#111';
+ctx.fillRect(0, 0, canvas.width, canvas.height);
+ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+ctx.strokeStyle = '#ffffff';
+
+function getPos(e) {
+  const r  = canvas.getBoundingClientRect();
+  const sx = canvas.width / r.width, sy = canvas.height / r.height;
+  const s  = e.touches ? e.touches[0] : e;
+  return { x: (s.clientX - r.left) * sx, y: (s.clientY - r.top) * sy };
+}
+function startDraw(e) {
+  drawing = true;
+  const { x, y } = getPos(e); lastX = x; lastY = y;
+  ctx.beginPath(); ctx.arc(x, y, brushSize/2, 0, Math.PI*2);
+  ctx.fillStyle = '#ffffff'; ctx.fill();
+}
+function doDraw(e) {
+  if (!drawing) return;
+  const { x, y } = getPos(e);
+  ctx.lineWidth = brushSize;
+  ctx.shadowBlur = brushSize * 0.5;
+  ctx.shadowColor = 'rgba(255,255,255,0.35)';
+  ctx.beginPath(); ctx.moveTo(lastX, lastY); ctx.lineTo(x, y); ctx.stroke();
+  lastX = x; lastY = y;
+}
+function endDraw() { drawing = false; lastX = null; lastY = null; }
+
+canvas.addEventListener('mousedown',  startDraw);
+canvas.addEventListener('mousemove',  doDraw);
+canvas.addEventListener('mouseup',    endDraw);
+canvas.addEventListener('mouseleave', endDraw);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); startDraw(e); }, { passive:false });
+canvas.addEventListener('touchmove',  e => { e.preventDefault(); doDraw(e);   }, { passive:false });
+canvas.addEventListener('touchend',   endDraw);
+
+function clearCanvas() {
+  ctx.fillStyle='#111'; ctx.fillRect(0,0,canvas.width,canvas.height); ctx.shadowBlur=0;
+  lastX=null; lastY=null; resetUI();
+}
+function setBrush(size, btn) {
+  brushSize = size;
+  document.querySelectorAll('.brush-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// Prob rows
+const pg = document.getElementById('prob-grid');
+for (let i=0;i<10;i++) {
+  const r=document.createElement('div'); r.className='prob-row';
+  r.innerHTML=`<div class="prob-num">${i}</div><div class="prob-bar-bg"><div class="prob-bar-fill" id="bar-${i}"></div></div><div class="prob-pct" id="pct-${i}">—</div>`;
+  pg.appendChild(r);
+}
+
+function setStatus(s,t) {
+  document.getElementById('status-dot').className=`status-dot ${s}`;
+  document.getElementById('status-text').textContent=t;
+}
+function resetUI() {
+  const d=document.getElementById('digit-big'); d.textContent='?'; d.classList.add('idle');
+  document.getElementById('conf-value').textContent='—';
+  document.getElementById('conf-value').style.color='';
+  document.getElementById('conf-bar').style.width='0%';
+  for(let i=0;i<10;i++){
+    document.getElementById(`bar-${i}`).style.width='0%';
+    document.getElementById(`bar-${i}`).classList.remove('winner');
+    document.getElementById(`pct-${i}`).textContent='—';
+    document.getElementById(`pct-${i}`).classList.remove('winner');
+  }
+  for(let i=0;i<3;i++){
+    const c=document.getElementById(`alt-${i}`); c.classList.remove('winner');
+    c.querySelector('.alt-digit').textContent='—';
+    c.querySelector('.alt-conf').textContent='';
+  }
+  document.getElementById('preview-img').src='';
+  setStatus('','Draw a digit and press Classify');
+}
+
+async function predict() {
+  setStatus('busy','Running inference…');
+  try {
+    const res  = await fetch('/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:canvas.toDataURL('image/png')})});
+    const data = await res.json();
+    if (data.error) { setStatus('err',`Error: ${data.error}`); return; }
+
+    // Preview
+    if (data.preview) document.getElementById('preview-img').src = data.preview;
+
+    // Big digit
+    const d = document.getElementById('digit-big');
+    d.textContent = data.digit; d.classList.remove('idle');
+
+    // Confidence
+    const cv = document.getElementById('conf-value');
+    cv.textContent = data.confidence.toFixed(1)+'%';
+    cv.style.color = data.confidence>=80?'var(--green)':data.confidence>=50?'var(--orange)':'var(--red)';
+    document.getElementById('conf-bar').style.width = data.confidence+'%';
+
+    // Top 3
+    if (data.top3) data.top3.forEach((item,i)=>{
+      const c=document.getElementById(`alt-${i}`);
+      c.querySelector('.alt-digit').textContent=item.digit;
+      c.querySelector('.alt-conf').textContent=item.conf.toFixed(1)+'%';
+      c.classList.toggle('winner',i===0);
+    });
+
+    // Bars
+    data.probs.forEach((p,i)=>{
+      const b=document.getElementById(`bar-${i}`), pt=document.getElementById(`pct-${i}`);
+      b.style.width=p+'%'; pt.textContent=p.toFixed(1)+'%';
+      b.classList.toggle('winner',i===data.digit);
+      pt.classList.toggle('winner',i===data.digit);
+    });
+
+    setStatus('ok',`Predicted ${data.digit} · ${data.confidence.toFixed(1)}% confidence`);
+  } catch(err) {
+    setStatus('err','Network error — is the server running?');
+  }
+}
+
+document.addEventListener('keydown', e => { if(e.key==='Enter') predict(); if(e.key==='Escape') clearCanvas(); });
+</script>
+</body>
+</html>
