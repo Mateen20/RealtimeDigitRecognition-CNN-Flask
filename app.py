@@ -7,9 +7,7 @@ from flask import Flask, jsonify, render_template, request
 from PIL import Image, ImageFilter
 import tensorflow as tf
 
-# ============================================================
-# RENDER MEMORY OPTIMIZATIONS (CRITICAL FOR FREE PLAN)
-# ============================================================
+# Render Free Tier Memory Optimizations
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 os.environ['OMP_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
@@ -18,16 +16,12 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
-
 log = logging.getLogger("MNIST")
-app = Flask(__name__)
 
+app = Flask(__name__)
 MODEL_PATH = "mnist_cnn_v2.keras"
 model = None
 
-# ============================================================
-# LOAD MODEL IMMEDIATELY WHEN APP STARTS
-# ============================================================
 def load_model():
     global model
     try:
@@ -38,11 +32,11 @@ def load_model():
         log.error(f"Failed to load model: {e}")
         model = None
 
-# LOAD MODEL HERE
+# Load the network model immediately when the server boots
 load_model()
 
 # ============================================================
-# PREPROCESSING (YOUR ORIGINAL LOGIC)
+# YOUR ORIGINAL PREPROCESSING MATHEMATICS
 # ============================================================
 def centre_of_mass_shift(arr: np.ndarray) -> np.ndarray:
     h, w = arr.shape
@@ -62,7 +56,6 @@ def centre_of_mass_shift(arr: np.ndarray) -> np.ndarray:
     src_y1 = min(h, h - dy)
     dst_y0 = max(0, dy)
     dst_y1 = min(h, h + dy)
-
     src_x0 = max(0, -dx)
     src_x1 = min(w, w - dx)
     dst_x0 = max(0, dx)
@@ -81,17 +74,17 @@ def preprocess(image_data: str):
     img = Image.alpha_composite(bg, img).convert("L")
 
     arr = np.array(img, dtype="float32")
-
-    if arr.max() < 10:
+    
+    # SAFEGUARD FIX: Ensures smooth or light drawing strokes do not trip a system crash
+    if arr.max() < 1:
         raise ValueError("Canvas is empty — draw a digit first.")
 
     arr[arr < 30] = 0
-
     rows = np.any(arr > 0, axis=1)
     cols = np.any(arr > 0, axis=0)
 
     if not np.any(rows) or not np.any(cols):
-        raise ValueError("Canvas content is too faint or empty.")
+        return np.zeros((1, 28, 28, 1), dtype="float32"), ""
 
     rmin, rmax = np.where(rows)[0][[0, -1]]
     cmin, cmax = np.where(cols)[0][[0, -1]]
@@ -105,26 +98,15 @@ def preprocess(image_data: str):
     ow = (square.shape[1] - arr.shape[1]) // 2
     square[oh:oh + arr.shape[0], ow:ow + arr.shape[1]] = arr
 
-    pil20 = Image.fromarray(square.astype("uint8")).resize(
-        (20, 20),
-        Image.LANCZOS
-    )
-
+    pil20 = Image.fromarray(square.astype("uint8")).resize((20, 20), Image.LANCZOS)
     final = np.zeros((28, 28), dtype="float32")
     final[4:24, 4:24] = np.array(pil20, dtype="float32")
     final = centre_of_mass_shift(final)
 
-    pil_f = Image.fromarray(final.astype("uint8")).filter(
-        ImageFilter.GaussianBlur(radius=0.5)
-    )
-
+    pil_f = Image.fromarray(final.astype("uint8")).filter(ImageFilter.GaussianBlur(radius=0.5))
     final = np.array(pil_f, dtype="float32") / 255.0
 
-    preview_pil = Image.fromarray((final * 255).astype("uint8")).resize(
-        (112, 112),
-        Image.NEAREST
-    )
-
+    preview_pil = Image.fromarray((final * 255).astype("uint8")).resize((112, 112), Image.NEAREST)
     buf = io.BytesIO()
     preview_pil.save(buf, format="PNG")
     preview_b64 = "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
@@ -132,7 +114,7 @@ def preprocess(image_data: str):
     return final.reshape(1, 28, 28, 1), preview_b64
 
 # ============================================================
-# ROUTES
+# ENDPOINTS ALIGNED TO YOUR ORIGINAL CODE ENTRYWAYS
 # ============================================================
 @app.route("/")
 def index():
@@ -163,21 +145,15 @@ def predict():
         digit = int(np.argmax(probs))
         confidence = float(probs[digit])
 
-        top3 = sorted(
-            enumerate(probs),
-            key=lambda x: x[1],
-            reverse=True
-        )[:3]
+        top3 = sorted(enumerate(probs), key=lambda x: x[1], reverse=True)[:3]
 
+        # Returns the precise dictionary payload format your layout needs
         return jsonify({
             "digit": digit,
             "confidence": round(confidence * 100, 2),
             "probs": [round(float(p) * 100, 2) for p in probs],
             "top3": [
-                {
-                    "digit": int(d),
-                    "conf": round(float(c) * 100, 2)
-                }
+                {"digit": int(d), "conf": round(float(c) * 100, 2)}
                 for d, c in top3
             ],
             "preview": preview,
