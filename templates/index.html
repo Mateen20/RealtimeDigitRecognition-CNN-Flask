@@ -347,49 +347,62 @@ function resetUI() {
   setStatus('','Draw a digit and press Classify');
 }
 
-async function predict() {
-  setStatus('busy','Running inference…');
+async function predictImage() {
+  if (isStaticImage && !document.getElementById('preview-img').src) return;
+
+  const base64Data = isStaticImage 
+    ? document.getElementById('preview-img').src 
+    : canvas.toDataURL('image/png');
+
+  setStatus('Analyzing...', 'blue');
+
   try {
-    const res  = await fetch('/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:canvas.toDataURL('image/png')})});
-    const data = await res.json();
-    if (data.error) { setStatus('err',`Error: ${data.error}`); return; }
+    // FIX: This tells the app to talk to Render instead of your local machine
+    const response = await fetch('/predict', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64Data })
+    });
 
-    // Preview
-    if (data.preview) document.getElementById('preview-img').src = data.preview;
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const data = await response.json();
 
-    // Big digit
+    // Show the big predicted digit
     const d = document.getElementById('digit-big');
-    d.textContent = data.digit; d.classList.remove('idle');
+    if (d) {
+      d.textContent = data.digit; 
+      d.classList.remove('idle');
+    }
 
-    // Confidence
+    // Show the confidence bar percentage
     const cv = document.getElementById('conf-value');
-    cv.textContent = data.confidence.toFixed(1)+'%';
-    cv.style.color = data.confidence>=80?'var(--green)':data.confidence>=50?'var(--orange)':'var(--red)';
-    document.getElementById('conf-bar').style.width = data.confidence+'%';
+    if (cv) {
+      cv.textContent = data.confidence.toFixed(1) + '%';
+      cv.style.color = data.confidence >= 80 ? 'var(--green)' : data.confidence >= 50 ? 'var(--orange)' : 'var(--red)';
+    }
+    
+    const cb = document.getElementById('conf-bar');
+    if (cb) cb.style.width = data.confidence + '%';
 
-    // Top 3
-    if (data.top3) data.top3.forEach((item,i)=>{
-      const c=document.getElementById(`alt-${i}`);
-      c.querySelector('.alt-digit').textContent=item.digit;
-      c.querySelector('.alt-conf').textContent=item.conf.toFixed(1)+'%';
-      c.classList.toggle('winner',i===0);
-    });
+    // Fill up the progress bars (0-9 scores) sent from Python
+    if (data.probs) {
+      data.probs.forEach((p, i) => {
+        const b = document.getElementById(`bar-${i}`);
+        const pt = document.getElementById(`pct-${i}`);
+        if (b) {
+          b.style.width = p + '%'; 
+          b.classList.toggle('winner', i === data.digit);
+        }
+        if (pt) {
+          pt.textContent = p.toFixed(1) + '%';
+          pt.classList.toggle('winner', i === data.digit);
+        }
+      });
+    }
 
-    // Bars
-    data.probs.forEach((p,i)=>{
-      const b=document.getElementById(`bar-${i}`), pt=document.getElementById(`pct-${i}`);
-      b.style.width=p+'%'; pt.textContent=p.toFixed(1)+'%';
-      b.classList.toggle('winner',i===data.digit);
-      pt.classList.toggle('winner',i===data.digit);
-    });
-
-    setStatus('ok',`Predicted ${data.digit} · ${data.confidence.toFixed(1)}% confidence`);
-  } catch(err) {
-    setStatus('err','Network error — is the server running?');
+    setStatus('Ready', 'green');
+  } catch (err) {
+    console.error(err);
+    setStatus('Prediction error occurred', 'red');
   }
 }
-
-document.addEventListener('keydown', e => { if(e.key==='Enter') predict(); if(e.key==='Escape') clearCanvas(); });
-</script>
-</body>
-</html>
