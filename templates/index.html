@@ -212,7 +212,6 @@ const ctx = canvas.getContext('2d');
 let isDrawing = false;
 let isStaticImage = false;
 
-// CANVAS DRAWING LISTENERS (Completely restored and fixed)
 ctx.strokeStyle = '#ffffff';
 ctx.lineWidth = 16;
 ctx.lineCap = 'round';
@@ -299,7 +298,6 @@ function setStatus(txt, colorVar) {
   s.style.color = `var(--${colorVar})`;
 }
 
-// FIX: LINKED DIRECTLY TO YOUR RENDER CLOUD SERVER USING A RELATIVE URL
 async function predictImage() {
   if (isStaticImage && !document.getElementById('preview-img').src) return;
 
@@ -310,6 +308,7 @@ async function predictImage() {
   setStatus('Analyzing...', 'blue');
 
   try {
+    // FIX: Targets Render automatically instead of broken localhost port 5000
     const response = await fetch('/predict', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -319,47 +318,40 @@ async function predictImage() {
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const data = await response.json();
 
-    // Show big digit
+    if (data.preview) document.getElementById('preview-img').src = data.preview;
+
     const d = document.getElementById('digit-big');
-    d.textContent = data.digit; 
-    d.classList.remove('idle');
+    d.textContent = data.digit; d.classList.remove('idle');
 
-    // Show main confidence bar
-    document.getElementById('conf-value').textContent = data.confidence.toFixed(1) + '%';
-    document.getElementById('conf-bar').style.width = data.confidence + '%';
+    const cv = document.getElementById('conf-value');
+    cv.textContent = data.confidence.toFixed(1)+'%';
+    cv.style.color = data.confidence>=80?'var(--green)':data.confidence>=50?'var(--orange)':'var(--red)';
+    document.getElementById('conf-bar').style.width = data.confidence+'%';
 
-    // Update alternative items if probs array exists
-    if (data.probs) {
-      // Sort probabilities to find top choices
-      const indexed = data.probs.map((p, i) => ({ digit: i, conf: p }));
-      indexed.sort((a, b) => b.conf - a.conf);
-
-      for (let i = 0; i < 3; i++) {
-        const c = document.getElementById(`alt-${i}`);
-        c.querySelector('.alt-digit').textContent = indexed[i].digit;
-        c.querySelector('.alt-conf').textContent = indexed[i].conf.toFixed(1) + '%';
-        c.classList.toggle('winner', i === 0);
+    if (data.top3) data.top3.forEach((item,i)=>{
+      const c=document.getElementById(`alt-${i}`);
+      if (c) {
+        c.querySelector('.alt-digit').textContent=item.digit;
+        c.querySelector('.alt-conf').textContent=item.conf.toFixed(1)+'%';
+        c.classList.toggle('winner',i===0);
       }
+    });
 
-      // Update all 0-9 softmax distribution graph rows
-      data.probs.forEach((p, i) => {
-        const b = document.getElementById(`bar-${i}`);
-        const pt = document.getElementById(`pct-${i}`);
-        b.style.width = p + '%'; 
-        pt.textContent = p.toFixed(1) + '%';
-        b.classList.toggle('winner', i === data.digit);
-        pt.classList.toggle('winner', i === data.digit);
-      });
-    }
+    if (data.probs) data.probs.forEach((p,i)=>{
+      const b=document.getElementById(`bar-${i}`), pt=document.getElementById(`pct-${i}`);
+      if (b) b.style.width=p+'%'; 
+      if (pt) pt.textContent=p.toFixed(1)+'%';
+      if (b) b.classList.toggle('winner',i===data.digit);
+      if (pt) pt.classList.toggle('winner',i===data.digit);
+    });
 
     setStatus('Ready', 'green');
   } catch (err) {
     console.error(err);
-    setStatus('Network Error', 'red');
+    setStatus('Network error — is the server running?', 'red');
   }
 }
 
-// Initial canvas fill
 clearInput();
 </script>
 </body>
